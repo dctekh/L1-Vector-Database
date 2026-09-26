@@ -2,12 +2,13 @@ import time
 import numpy as np
 import psycopg2
 import chromadb
+from chromadb.config import Settings
 from config import load_config
 
 EMBEDDING_DIM = 384 
 CHROMA_PATH = "./chroma_db"
 COLLECTION_NAME = "sentence_embeddings_chroma"
-PROGRESS_EVERY = 500
+BATCH_SIZE = 500
 
 
 def fetch_sentences_from_postgres():
@@ -27,7 +28,10 @@ def execute_c0():
     total = len(rows)
     print(f"Frases a cargar en Chroma: {total}")
 
-    client = chromadb.PersistentClient(path=CHROMA_PATH)
+    client = chromadb.PersistentClient(
+        path=CHROMA_PATH,
+        settings=Settings(anonymized_telemetry=False),
+    )
     try:
         client.delete_collection(COLLECTION_NAME)
     except Exception:
@@ -39,26 +43,28 @@ def execute_c0():
 
     placeholder = [0.0] * EMBEDDING_DIM
 
-    text_times = []
-    print("Ejecutando [C0]: Guardando texto (con embedding placeholder) en Chroma...")
-    for i, (row_id, sentence) in enumerate(rows, start=1):
+    batch_times = []
+    print(f"Ejecutando [C0]: Guardando texto en Chroma por lotes de {BATCH_SIZE}...")
+    for i in range(0, total, BATCH_SIZE):
+        chunk = rows[i:i + BATCH_SIZE]
+        ids = [str(row_id) for row_id, _ in chunk]
+        documents = [sentence for _, sentence in chunk]
+        embeddings = [placeholder] * len(chunk)
+
         t0 = time.perf_counter()
-        collection.add(
-            ids=[str(row_id)],
-            documents=[sentence],
-            embeddings=[placeholder],
-        )
-        text_times.append(time.perf_counter() - t0)
+        collection.add(ids=ids, documents=documents, embeddings=embeddings)
+        elapsed = time.perf_counter() - t0
+        batch_times.append(elapsed)
 
-        if i % PROGRESS_EVERY == 0 or i == total:
-            print(f"  ... {i}/{total} procesadas")
+        print(f"  Lote {i // BATCH_SIZE + 1}: {len(chunk)} docs en {elapsed:.4f} s")
 
-    print("\n--- Estadisticas de tiempo [C0]: Texto ---")
-    print(f"Minimo: {np.min(text_times):.6f} s")
-    print(f"Maximo: {np.max(text_times):.6f} s")
-    print(f"Promedio: {np.mean(text_times):.6f} s")
-    print(f"Desviacion Estandar: {np.std(text_times):.6f} s")
-
+    total_time = sum(batch_times)
+    print("\n--- Estadisticas de tiempo [C0]: Texto (por lote) ---")
+    print(f"Minimo: {np.min(batch_times):.6f} s")
+    print(f"Maximo: {np.max(batch_times):.6f} s")
+    print(f"Promedio: {np.mean(batch_times):.6f} s")
+    print(f"Desviacion Estandar: {np.std(batch_times):.6f} s")
+    print(f"Tiempo total: {total_time:.4f} s | Tiempo medio por documento: {total_time / total:.6f} s")
 
 if __name__ == '__main__':
     execute_c0()

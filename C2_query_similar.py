@@ -1,10 +1,12 @@
 import time
 import numpy as np
 import chromadb
+from chromadb.config import Settings
 
 CHROMA_PATH = "./chroma_db"
 SOURCE_COLLECTION = "sentence_embeddings_chroma"
 N_QUERIES = 10
+BUILD_BATCH_SIZE = 500
 
 
 def build_metric_collections(client, ids, documents, embeddings):
@@ -25,33 +27,27 @@ def build_metric_collections(client, ids, documents, embeddings):
         metadata={"hnsw:space": "l2"},
     )
 
-    batch = 500
-    for i in range(0, len(ids), batch):
-        coll_cosine.add(
-            ids=ids[i:i + batch],
-            documents=documents[i:i + batch],
-            embeddings=embeddings[i:i + batch],
-        )
-        coll_l2.add(
-            ids=ids[i:i + batch],
-            documents=documents[i:i + batch],
-            embeddings=embeddings[i:i + batch],
-        )
+    for i in range(0, len(ids), BUILD_BATCH_SIZE):
+        batch_ids = ids[i:i + BUILD_BATCH_SIZE]
+        batch_docs = documents[i:i + BUILD_BATCH_SIZE]
+        batch_embs = embeddings[i:i + BUILD_BATCH_SIZE]
+        coll_cosine.add(ids=batch_ids, documents=batch_docs, embeddings=batch_embs)
+        coll_l2.add(ids=batch_ids, documents=batch_docs, embeddings=batch_embs)
 
     return coll_cosine, coll_l2
 
 
 def run_queries(collection, query_ids, query_embeddings, query_docs, label):
     times = []
-    print(f"\n=== Consultas top-2 en colección '{label}' ===")
+    print(f"\n=== Consultas top-2 en coleccion '{label}' ===")
     for qid, qvec, qdoc in zip(query_ids, query_embeddings, query_docs):
-        t0 = time.time()
+        t0 = time.perf_counter()
         results = collection.query(
             query_embeddings=[qvec],
             n_results=3,
             include=["documents", "distances"],
         )
-        times.append(time.time() - t0)
+        times.append(time.perf_counter() - t0)
 
         ids_res = results["ids"][0]
         docs_res = results["documents"][0]
@@ -62,13 +58,16 @@ def run_queries(collection, query_ids, query_embeddings, query_docs, label):
         print(f"\nFrase Objetivo (id={qid}): '{qdoc}'")
         print(f"  -> Top-2 ({label}): {top2}")
 
-    print(f"\n--- Estadísticas de tiempo [C2]: Consulta '{label}' ---")
-    print(f"Mínimo: {np.min(times):.6f} s | Máximo: {np.max(times):.6f} s | "
+    print(f"\n--- Estadisticas de tiempo [C2]: Consulta '{label}' ---")
+    print(f"Minimo: {np.min(times):.6f} s | Maximo: {np.max(times):.6f} s | "
           f"Promedio: {np.mean(times):.6f} s | Desv. Est: {np.std(times):.6f} s")
 
 
 def execute_c2():
-    client = chromadb.PersistentClient(path=CHROMA_PATH)
+    client = chromadb.PersistentClient(
+        path=CHROMA_PATH,
+        settings=Settings(anonymized_telemetry=False),
+    )
     source = client.get_collection(SOURCE_COLLECTION)
 
     data = source.get(include=["documents", "embeddings"])
@@ -76,7 +75,7 @@ def execute_c2():
     documents = data["documents"]
     embeddings = data["embeddings"]
 
-    print("Construyendo colecciones auxiliares (cosine / l2)...")
+    print("Construyendo colecciones auxiliares (cosine / l2) por lotes...")
     coll_cosine, coll_l2 = build_metric_collections(client, ids, documents, embeddings)
 
     query_ids = ids[:N_QUERIES]
@@ -84,7 +83,7 @@ def execute_c2():
     query_embeddings = embeddings[:N_QUERIES]
 
     run_queries(coll_cosine, query_ids, query_embeddings, query_docs, "cosine")
-    run_queries(coll_l2, query_ids, query_embeddings, query_docs, "l2 (euclídea al cuadrado)")
+    run_queries(coll_l2, query_ids, query_embeddings, query_docs, "l2 (euclidea al cuadrado)")
 
 
 if __name__ == '__main__':
