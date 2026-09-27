@@ -1,0 +1,7 @@
+# Archivos de configuración con credenciales
+database.ini
+
+# Entornos virtuales y caché de Python
+__pycache__/
+*.pyc
+.env
