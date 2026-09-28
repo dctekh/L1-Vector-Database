@@ -6,7 +6,7 @@ from config import load_config, hf_login
 
 def execute_p1():
     db_config = load_config(section='postgresql')
-    hf_login()  # opcional: acelera la descarga del modelo si hay token
+    hf_login()  
     conn = psycopg2.connect(**db_config)
     conn.autocommit = False
     cursor = conn.cursor()
@@ -17,8 +17,8 @@ def execute_p1():
     cursor.execute("SELECT id, sentence FROM sentence_embeddings ORDER BY id;")
     rows = cursor.fetchall()
 
-    generation_times = []  # extra, no obligatorio pero útil para la memoria
-    embedding_times = []   # lo que pide el enunciado: tiempo de ALMACENAR
+    generation_times = []  
+    embedding_times = []   
     print("Ejecutando [P1]: Generando e insertando embeddings...")
     for row_id, sentence_text in rows:
         # (a) coste de generar el embedding (modelo de ML, en Python)
@@ -47,10 +47,6 @@ def execute_p1():
     print(f"Promedio: {np.mean(embedding_times):.6f} s")
     print(f"Desviación Estándar: {np.std(embedding_times):.6f} s")
 
-    # Opcional pero recomendado: como usamos UPDATE sobre una tabla ya
-    # poblada, Postgres deja "dead tuples" (MVCC). Un VACUUM ANALYZE limpia
-    # eso y evita que P2 mida sobre una tabla hinchada. Coméntalo en la
-    # memoria como parte de la discusión del impedance mismatch.
     print("\nEjecutando VACUUM ANALYZE sobre sentence_embeddings...")
     old_autocommit = conn.autocommit
     conn.autocommit = True
