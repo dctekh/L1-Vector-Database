@@ -51,7 +51,7 @@ def execute_p0():
         CREATE TABLE IF NOT EXISTS sentence_embeddings (
             id SERIAL PRIMARY KEY,
             sentence TEXT NOT NULL,
-            embedding DOUBLE PRECISION[]
+            embedding REAL[]
         );
     """)
     cursor.execute("TRUNCATE TABLE sentence_embeddings RESTART IDENTITY;")
